@@ -8,6 +8,8 @@ Swift toolchain for iOS
 2. Clone this repository somewhere on your computer
 3. Run `./prepare-toolchain <major> <minor> <patch> <path to required Xcode.app>`
 
+**Note**: In case you encounter an error when invoking `prepare-toolchain`, invoking it again might resolve the error.
+
 ### Packaging as a .deb
 
     make package

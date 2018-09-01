@@ -1,5 +1,5 @@
 NULL_NAME := swift-toolchain
-SWIFT_VERSION = $(strip $(shell cat toolchains/.version 2>/dev/null))
+SWIFT_VERSION = $(strip $(shell cat toolchains/.version 2>/dev/null | tr -d '\n'))
 BUILD = 1
 
 PACKAGE_VERSION = $(SWIFT_VERSION)-$(BUILD)

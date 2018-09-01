@@ -32,7 +32,7 @@ rm -rf "${package}"
 
 info "Modifying macOS toolchain"
 cd usr
-rm -r bin lib/libclang.dylib lib/sourcekitd.framework lib/libswiftDemangle.dylib lib/swift/!(clang|iphoneos|shims|migrator) lib/swift_static/!(iphoneos) libexec local
+rm -rf bin lib/libclang.dylib lib/sourcekitd.framework lib/libswiftDemangle.dylib lib/swift/!(clang|iphoneos|shims|migrator) lib/swift_static/!(iphoneos) libexec local
 cd lib/swift/iphoneos
 for file in libswift*.dylib; do
 	# symlink to the libswift package
@@ -55,27 +55,28 @@ swift/utils/update-checkout --clone --scheme "swift-${1}.${2}-branch" --reset-to
 
 # compile swift
 info "Compiling Swift"
-# FIXME: This seems to be broken on High Sierra (at least when building Swift < 4.2)
 swift/utils/build-script \
 --build-subdir=LLVMClangSwift_iphoneos \
 --release \
 -- \
 --install-swift \
 --install-destdir=output \
---swift-install-components="compiler;clang-builtin-headers;stdlib;sdk-overlay;editor-integration;tools;sourcekit-xpc-service;swift-remote-mirror;swift-remote-mirror-headers;" \
+--swift-install-components="compiler;clang-builtin-headers;editor-integration;tools;sourcekit-xpc-service;swift-remote-mirror;swift-remote-mirror-headers;" \
 --install-prefix=/usr \
 --cross-compile-hosts=iphoneos-arm64 \
 --compiler-vendor=apple \
 --swift-primary-variant-sdk=IOS \
 --swift-primary-variant-arch=arm64 \
 --build-toolchain-only=1 \
---build-swift-static-stdlib=1 \
---build-swift-dynamic-stdlib=1 \
---build-swift-static-sdk-overlay=1 \
---build-swift-dynamic-sdk-overlay=1 \
---build-runtime-with-host-compiler=1 \
+--build-swift-static-stdlib=0 \
+--build-swift-dynamic-stdlib=0 \
+--build-swift-static-sdk-overlay=0 \
+--build-swift-dynamic-sdk-overlay=0 \
+--build-runtime-with-host-compiler=0 \
 --skip-local-host-install \
 --skip-build-benchmarks \
+--skip-test-sourcekit \
+--skip-test-swift \
 --llvm-include-tests=0 \
 --llvm-enable-modules=0 \
 --build-swift-examples=0 \
