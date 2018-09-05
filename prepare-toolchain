@@ -13,6 +13,7 @@ export DEVELOPER_DIR="$4/Contents/Developer/"
 info() { echo "[info] $1"; }
 
 version="$1.$2.$3"
+output_name="output-$1.$2"
 file_name="swift-${version}-RELEASE-osx"
 package="${file_name}-package.pkg"
 
@@ -51,7 +52,7 @@ cd swift-source
 if [[ ! -d swift ]]; then
 	git clone https://github.com/apple/swift.git
 fi
-swift/utils/update-checkout --clone --scheme "swift-${1}.${2}-branch" --reset-to-remote
+swift/utils/update-checkout --clone --scheme "swift-$1.$2-branch" --reset-to-remote
 
 # compile swift
 info "Compiling Swift"
@@ -60,7 +61,7 @@ swift/utils/build-script \
 --release \
 -- \
 --install-swift \
---install-destdir=output \
+--install-destdir="${output_name}" \
 --swift-install-components="compiler;clang-builtin-headers;editor-integration;tools;sourcekit-xpc-service;swift-remote-mirror;swift-remote-mirror-headers;" \
 --install-prefix=/usr \
 --cross-compile-hosts=iphoneos-arm64 \
@@ -87,8 +88,8 @@ swift/utils/build-script \
 cd ..
 
 info "Merging toolchains"
-cp -a swift-source/output/merged-hosts/usr/bin usr/
-cp swift-source/output/merged-hosts/usr/lib/libswiftDemangle.dylib usr/lib/
+cp -a "swift-source/${output_name}/merged-hosts/usr/bin" usr/
+cp "swift-source/${output_name}/merged-hosts/usr/lib/libswiftDemangle.dylib" usr/lib/
 cd usr/
 # Codesign any Mach-O files, also adding the correct entitlements
 find . \( -type f \( -name '*.dylib' -or \( -path './bin/*' -not -name '*.py' \) \) -or \( -path '*.framework/*' -not -name '*.*' \) -not -name '.DS_Store' \) -print0 | xargs -0 -I{} sh -c "ldid -S../../ent.xml {} || :"
