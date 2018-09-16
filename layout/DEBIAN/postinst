@@ -1,0 +1,6 @@
+#!/bin/bash
+if [[ -x /usr/libexec/cydia/move.sh ]]; then
+	bash /usr/libexec/cydia/move.sh /usr/share/swift_stash
+else
+	:
+fi

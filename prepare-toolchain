@@ -94,4 +94,14 @@ cd usr/
 # Codesign any Mach-O files, also adding the correct entitlements
 find . \( -type f \( -name '*.dylib' -or \( -path './bin/*' -not -name '*.py' \) \) -or \( -path '*.framework/*' -not -name '*.*' \) -not -name '.DS_Store' \) -print0 | xargs -0 -I{} sh -c "ldid -S../../ent.xml {} || :"
 
+function copy_file() {
+	mkdir -p share/swift_stash/"$(dirname "$1")"
+	mv "$1" share/swift_stash/"$(dirname "$1")"
+	ln -fs /usr/share/swift_stash/"$1" "$1"
+}
+
+export -f copy_file
+
+find . -type f -print0 | xargs -0 -I{} sh -c 'copy_file {}'
+
 echo "${version}" > ../.version

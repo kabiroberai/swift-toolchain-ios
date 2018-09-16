@@ -1,6 +1,6 @@
 NULL_NAME := swift-toolchain
-SWIFT_VERSION = $(strip $(shell cat toolchains/.version 2>/dev/null | tr -d '\n'))
-BUILD = 1
+SWIFT_VERSION := $(strip $(shell cat toolchains/.version 2>/dev/null | tr -d '\n'))
+BUILD := 1
 
 PACKAGE_VERSION = $(SWIFT_VERSION)-$(BUILD)
 
@@ -18,6 +18,9 @@ endif
 
 stage::
 	$(ECHO_NOTHING)rsync -a toolchains/usr $(THEOS_STAGING_DIR)/ $(_THEOS_RSYNC_EXCLUDE_COMMANDLINE)$(ECHO_END)
+
+clean::
+	$(ECHO_NOTHING)rm -rf toolchains/swift-source/build$(ECHO_END)
 
 before-package::
 	$(ECHO_NOTHING)sed -i '' -e 's/\$${SWIFT_VERSION}/$(SWIFT_VERSION_DEPENDS)/g' "$(_THEOS_CONTROL_FILE)"$(ECHO_END)
