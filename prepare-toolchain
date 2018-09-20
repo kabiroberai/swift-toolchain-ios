@@ -3,17 +3,16 @@ set -e
 shopt -s extglob
 cd "$(dirname "$0")"
 
-if [[ $# -ne 4 ]]; then 
-	echo "Usage: $0 <major> <minor> <patch> <path to correct Xcode.app>"
+if [[ $# -ne 2 ]]; then 
+	echo "Usage: $0 <version> <path to correct Xcode.app>"
 	exit 1
 fi
 
-export DEVELOPER_DIR="$4/Contents/Developer/"
+export DEVELOPER_DIR="$2/Contents/Developer/"
 
 info() { echo "[info] $1"; }
 
-version="$1.$2.$3"
-output_name="output-$1.$2"
+version="$1"
 file_name="swift-${version}-RELEASE-osx"
 package="${file_name}-package.pkg"
 
@@ -47,12 +46,18 @@ type cmake &>/dev/null || brew install cmake
 type ninja &>/dev/null || brew install ninja
 
 info "Checking out Swift repo"
-mkdir -p swift-source
-cd swift-source
-if [[ ! -d swift ]]; then
-	git clone https://github.com/apple/swift.git
+
+if [[ -d swift-source ]]; then
+	rm -rf swift-source
 fi
-swift/utils/update-checkout --clone --scheme "swift-$1.$2-branch" --reset-to-remote
+
+mkdir swift-source
+cd swift-source
+git clone https://github.com/apple/swift.git
+swift/utils/update-checkout --clone --tag "swift-${version}-RELEASE"
+
+# patch clang
+sed -i '' -e 's;__has_include(<CoreServices/CoreServices.h>);__has_include(<FSEvents/FSEvents.h>);g' clang/lib/DirectoryWatcher/DirectoryWatcher.cpp
 
 # compile swift
 info "Compiling Swift"
@@ -61,7 +66,7 @@ swift/utils/build-script \
 --release \
 -- \
 --install-swift \
---install-destdir="${output_name}" \
+--install-destdir=output \
 --swift-install-components="compiler;clang-builtin-headers;editor-integration;tools;sourcekit-xpc-service;swift-remote-mirror;swift-remote-mirror-headers;" \
 --install-prefix=/usr \
 --cross-compile-hosts=iphoneos-arm64 \
@@ -88,8 +93,8 @@ swift/utils/build-script \
 cd ..
 
 info "Merging toolchains"
-cp -a "swift-source/${output_name}/merged-hosts/usr/bin" usr/
-cp "swift-source/${output_name}/merged-hosts/usr/lib/libswiftDemangle.dylib" usr/lib/
+cp -a "swift-source/output/merged-hosts/usr/bin" usr/
+cp "swift-source/output/merged-hosts/usr/lib/libswiftDemangle.dylib" usr/lib/
 cd usr/
 # Codesign any Mach-O files, also adding the correct entitlements
 find . \( -type f \( -name '*.dylib' -or \( -path './bin/*' -not -name '*.py' \) \) -or \( -path '*.framework/*' -not -name '*.*' \) -not -name '.DS_Store' \) -print0 | xargs -0 -I{} sh -c "ldid -S../../ent.xml {} || :"
@@ -104,4 +109,7 @@ export -f copy_file
 
 find . -type f -print0 | xargs -0 -I{} sh -c 'copy_file {}'
 
-echo "${version}" > ../.version
+cd ..
+mv usr "usr-${version}"
+
+echo "${version}" > .version
