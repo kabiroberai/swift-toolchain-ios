@@ -1,0 +1,126 @@
+name: Build
+
+on:
+  push:
+    branches: [ pr ]
+
+jobs:
+  host-build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@main
+      - name: Host tc prep work
+        run: |
+          brew install ninja
+          pip install --user six
+          echo "[info] Checking out Swift repo"
+          mkdir swift-source && cd swift-source
+          git clone --depth=1 https://github.com/apple/swift.git
+          swift/utils/update-checkout --clone --tag "swift-5.5.1-RELEASE" -j "$(sysctl -n hw.ncpu)"
+
+      - name: Build Swift Compiler for host
+        run: |
+          export DEVELOPER_DIR="/Applications/Xcode_13.1.app/Contents/Developer/"
+          export SKIP_XCODE_VERSION_CHECK=1
+          echo "[info] Compiling host tc"
+          cd swift-source
+          swift/utils/build-script \
+            --build-subdir=LLVMClangSwift_iphoneos \
+            --release \
+            -- \
+            --install-swift \
+            --install-prefix=/usr \
+            --llvm-install-components="clang;compiler-rt" \
+            --swift-install-components="compiler" \
+            --cmake-generator=Ninja \
+            --extra-cmake-options="-DLLVM_TARGETS_TO_BUILD=X86;ARM;AArch64" \
+            --build-args="-j$(sysctl -n hw.ncpu)" \
+            --skip-build-benchmarks \
+            --skip-build-clang-tools-extra \
+            --skip-build-android \
+            --skip-test-sourcekit \
+            --skip-test-swift \
+            --skip-build-tvos \
+            --skip-test-tvos \
+            --skip-build-watchos \
+            --skip-test-watchos \
+            --llvm-include-tests=0 \
+            --llvm-enable-modules=0 \
+            --build-swift-examples=0 \
+            --swift-include-tests=0 \
+            --darwin-crash-reporter-client=1 \
+            --reconfigure
+          mv -v build/LLVMClangSwift_iphoneos/ $HOME
+
+      - name: Prep host tc for artifact upload
+        run: |
+          cd $HOME
+          zip -9 -r LLVMClangSwift_iphoneos.zip LLVMClangSwift_iphoneos
+
+      - name: Upload host tc artifact
+        uses: actions/upload-artifact@main
+        with:
+          name: LLVMClangSwift_iphoneos-Container
+          path: ~/LLVMClangSwift_iphoneos.zip
+
+  ios-build:
+    needs: host-build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@main
+      - name: Download artifact
+        uses: actions/download-artifact@main
+      - name: Extract host tc from artifact
+        run: |
+          set -x
+          for container in ./*Container; do
+            if [[ -d "$container" ]]; then
+              unzip $container/*.zip -d $HOME
+            fi
+          done
+
+      - name: The work
+        run: |
+          export SKIP_XCODE_VERSION_CHECK=1
+          pip install --user six
+          ./prepare-toolchain 5.5.1 /Applications/Xcode_13.1.app
+
+      - name: theos-build
+        uses: L1ghtmann/theos-build@main
+        with:
+          extra_args: "FINALPACKAGE=1"
+
+      - uses: actions/upload-artifact@main
+        with:
+          name: package
+          path: packages/*.deb
+
+  upload:
+    needs: ios-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+      - name: Download artifacts
+        uses: actions/download-artifact@main
+
+      - name: Create release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: 5.5.1
+          release_name: Swift Toolchain (v5.5.1)
+          draft: false
+          prerelease: false
+
+      - name: Attach debs to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -x
+          debs=()
+          for deb in **/*.deb; do
+            debs+=("-a" "$deb")
+          done
+          hub release edit "${debs[@]}" -m "Swift Toolchain (v5.5.1)" "5.5.1"
