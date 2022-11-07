@@ -129,9 +129,11 @@ cd usr/
 find . \( -type f \( -name '*.dylib' -or \( -path './bin/*' -not -name '*.py' \) \) -or \( -path '*.framework/*' -not -name '*.*' \) -not -name '.DS_Store' \) -print0 | xargs -0 -I{} sh -c "ldid -S../../ent.xml {} || :"
 
 copy_file() {
-	mkdir -p share/swift_stash/"$(dirname "$1")"
-	mv -v "$1" share/swift_stash/"$(dirname "$1")"
-	ln -fs /usr/share/swift_stash/"$1" "$1"
+	# Remove "./" from the file path
+	file="$(echo $1 | cut -c 3-)"
+	mkdir -p share/swift_stash/"$(dirname "$file")"
+	mv -v "$file" share/swift_stash/"$(dirname "$file")"
+	ln -fs /usr/share/swift_stash/"$file" "$file"
 }
 
 export -f copy_file
