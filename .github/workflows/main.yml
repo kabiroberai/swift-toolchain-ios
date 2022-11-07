@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [ pr ]
+    branches: [ master ]
 
 jobs:
   host-build:
@@ -102,6 +102,8 @@ jobs:
       - uses: actions/checkout@main
       - name: Download artifacts
         uses: actions/download-artifact@main
+        with:
+          name: package
 
       - name: Create release
         id: create_release
