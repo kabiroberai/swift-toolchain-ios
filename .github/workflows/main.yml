@@ -104,6 +104,7 @@ jobs:
         uses: actions/download-artifact@main
         with:
           name: package
+          with: ~/package
 
       - name: Create release
         id: create_release
@@ -122,7 +123,7 @@ jobs:
         run: |
           set -x
           debs=()
-          for deb in **/*.deb; do
+          for deb in ~/**/*.deb; do
             debs+=("-a" "$deb")
           done
           hub release edit "${debs[@]}" -m "Swift Toolchain (v5.5.1)" "5.5.1"
