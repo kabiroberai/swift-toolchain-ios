@@ -2,14 +2,15 @@ name: Build
 
 on:
   push:
-    branches: [ master ]
+    tags:
+    - '*'
 
 jobs:
   host-build:
-    runs-on: macos-latest
+    runs-on: macos-11
     steps:
       - uses: actions/checkout@main
-      - name: Host tc prep work
+      - name: Host Toolchain Prep
         run: |
           brew install ninja
           pip install --user six
@@ -18,7 +19,7 @@ jobs:
           git clone --depth=1 https://github.com/apple/swift.git
           swift/utils/update-checkout --clone --tag "swift-5.5.1-RELEASE" -j "$(sysctl -n hw.ncpu)"
 
-      - name: Build Swift Compiler for host
+      - name: Build Swift Compiler For Host
         run: |
           export DEVELOPER_DIR="/Applications/Xcode_13.1.app/Contents/Developer/"
           export SKIP_XCODE_VERSION_CHECK=1
@@ -52,12 +53,12 @@ jobs:
             --reconfigure
           mv -v build/LLVMClangSwift_iphoneos/ $HOME
 
-      - name: Prep host tc for artifact upload
+      - name: Prep Host Toolchain For Artifact Upload
         run: |
           cd $HOME
           zip -9 -r LLVMClangSwift_iphoneos.zip LLVMClangSwift_iphoneos
 
-      - name: Upload host tc artifact
+      - name: Upload Host Toolchain Artifact
         uses: actions/upload-artifact@main
         with:
           name: LLVMClangSwift_iphoneos-Container
@@ -65,7 +66,7 @@ jobs:
 
   ios-build:
     needs: host-build
-    runs-on: macos-latest
+    runs-on: macos-11
     steps:
       - uses: actions/checkout@main
       - name: Download artifact
@@ -79,13 +80,13 @@ jobs:
             fi
           done
 
-      - name: The work
+      - name: The Work
         run: |
           export SKIP_XCODE_VERSION_CHECK=1
           pip install --user six
           ./prepare-toolchain 5.5.1 /Applications/Xcode_13.1.app
 
-      - name: theos-build
+      - name: Build Deb
         uses: L1ghtmann/theos-build@main
         with:
           extra_args: "FINALPACKAGE=1"
@@ -98,32 +99,34 @@ jobs:
   upload:
     needs: ios-build
     runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@main
-      - name: Download artifacts
+      - name: Download Artifacts
         uses: actions/download-artifact@main
         with:
           name: package
           with: ~/package
 
-      - name: Create release
+      - name: Set TAG Variable
+        run: |
+          echo "TAG=${GITHUB_REF#refs/tags/}" >> "$GITHUB_ENV"
+
+      - name: Create Release
         id: create_release
         uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: 5.5.1
-          release_name: Swift Toolchain (v5.5.1)
+          tag_name: $TAG
+          release_name: $TAG
+          body: ''
           draft: false
-          prerelease: false
 
-      - name: Attach debs to release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Attach Deb To Release
         run: |
           set -x
           debs=()
           for deb in ~/**/*.deb; do
             debs+=("-a" "$deb")
           done
-          hub release edit "${debs[@]}" -m "Swift Toolchain (v5.5.1)" "5.5.1"
+          hub release edit "${debs[@]}" -m "$TAG" "$TAG"
