@@ -2,14 +2,12 @@ name: Build
 
 on:
   push:
-    tags:
-    - '*'
+  workflow_dispatch:
 
 jobs:
   host-build:
     runs-on: macos-11
     steps:
-      - uses: actions/checkout@main
       - name: Host Toolchain Prep
         run: |
           brew install ninja
@@ -61,24 +59,24 @@ jobs:
       - name: Upload Host Toolchain Artifact
         uses: actions/upload-artifact@main
         with:
-          name: LLVMClangSwift_iphoneos-Container
+          name: LLVMClangSwift_iphoneos
           path: ~/LLVMClangSwift_iphoneos.zip
 
   ios-build:
     needs: host-build
     runs-on: macos-11
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@main
-      - name: Download artifact
+      - name: Download Artifact
         uses: actions/download-artifact@main
-      - name: Extract host tc from artifact
+        with:
+          name: LLVMClangSwift_iphoneos
+
+      - name: Extract Host Toolchain
         run: |
-          set -x
-          for container in ./*Container; do
-            if [[ -d "$container" ]]; then
-              unzip $container/*.zip -d $HOME
-            fi
-          done
+          unzip LLVMClangSwift_iphoneos.zip -d $HOME
 
       - name: The Work
         run: |
@@ -86,47 +84,19 @@ jobs:
           pip install --user six
           ./prepare-toolchain 5.5.1 /Applications/Xcode_13.1.app
 
-      - name: Build Deb
-        uses: L1ghtmann/theos-build@main
-        with:
-          extra_args: "FINALPACKAGE=1"
-
-      - uses: actions/upload-artifact@main
-        with:
-          name: package
-          path: packages/*.deb
-
-  upload:
-    needs: ios-build
-    runs-on: ubuntu-latest
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@main
-      - name: Download Artifacts
-        uses: actions/download-artifact@main
-        with:
-          name: package
-          with: ~/package
-
-      - name: Set TAG Variable
+      - name: Set up Theos
         run: |
-          echo "TAG=${GITHUB_REF#refs/tags/}" >> "$GITHUB_ENV"
+          brew install ldid make xz
+          git clone --recursive https://github.com/theos/theos.git ~/theos
 
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        with:
-          tag_name: ${{ env.TAG }}
-          release_name: ${{ env.TAG }}
-          body: ''
-          draft: false
+      - name: Build Deb
+        run: |
+          export THEOS=~/theos
+          gmake clean package FINALPACKAGE=1
 
       - name: Attach Deb To Release
         run: |
           set -x
-          debs=()
-          for deb in ~/**/*.deb; do
-            debs+=("-a" "$deb")
-          done
-          hub release edit "${debs[@]}" -m "$TAG" "$TAG"
+          TAG="${GITHUB_REF##*/}-${GITHUB_SHA:0:7}"
+          gh release create "$TAG" --draft --title "Draft Release"
+          gh release upload "$TAG" packages/*.deb
