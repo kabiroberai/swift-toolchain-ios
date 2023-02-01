@@ -21,7 +21,7 @@ mkdir -p toolchains
 cd toolchains
 info "Downloading macOS toolchain"
 if ! [[ -f "toolchain-${version}.pkg" ]]; then
-	curl -#o "toolchain-${version}.pkg" "https://swift.org/builds/swift-${version}-release/xcode/swift-${version}-RELEASE/${file_name}.pkg"
+	curl -Lo "toolchain-${version}.pkg" "https://swift.org/builds/swift-${version}-release/xcode/swift-${version}-RELEASE/${file_name}.pkg"
 fi
 
 info "Unpacking toolchain"
