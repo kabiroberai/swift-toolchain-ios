@@ -5,4 +5,4 @@ Architecture: iphoneos-arm
 Description: Swift toolchain cross-compiled for iOS
 Author: Kabir Oberai <support@kabiroberai.com>
 Maintainer: Kabir Oberai <support@kabiroberai.com>
-Depends: firmware (>= 7.0), cy+cpu.arm64, ${SWIFT_VERSION}
+Depends: firmware (>= 10.0), cy+cpu.arm64, ${SWIFT_VERSION}

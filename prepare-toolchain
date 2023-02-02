@@ -1,9 +1,10 @@
-#!/bin/bash
+#!/usr/bin/env bash
+
 set -e
 shopt -s extglob
 cd "$(dirname "$0")"
 
-if [[ $# -ne 2 ]]; then 
+if [[ $# -ne 2 ]]; then
 	echo "Usage: $0 <version> <path to correct Xcode.app>"
 	exit 1
 fi
@@ -19,15 +20,15 @@ package="${file_name}-package.pkg"
 mkdir -p toolchains
 cd toolchains
 info "Downloading macOS toolchain"
-if [[ ! -f "toolchain-${version}.pkg" ]]; then
-	curl -#o "toolchain-${version}.pkg" "https://swift.org/builds/swift-${version}-release/xcode/swift-${version}-RELEASE/${file_name}.pkg"
+if ! [[ -f "toolchain-${version}.pkg" ]]; then
+	curl -Lo "toolchain-${version}.pkg" "https://swift.org/builds/swift-${version}-release/xcode/swift-${version}-RELEASE/${file_name}.pkg"
 fi
 
 info "Unpacking toolchain"
 # remove any pre-existing usr dir first
 rm -rf usr
-xar -xf "toolchain-${version}.pkg" "${package}/Payload"
-tar -xzf "${package}/Payload" "usr"
+xar -xvf "toolchain-${version}.pkg" "${package}/Payload"
+tar -xvf "${package}/Payload" "usr"
 rm -rf "${package}"
 
 info "Modifying macOS toolchain"
@@ -38,71 +39,101 @@ for file in libswift*.dylib; do
 	# symlink to the libswift package
 	ln -fs "/usr/lib/libswift/${version}/${file}" "${file}"
 done
-cd ../../../..
+cd ../../../../
 
 info "Installing dependencies"
-type brew &>/dev/null || ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+type brew &>/dev/null || bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 type cmake &>/dev/null || brew install cmake
+type ldid &>/dev/null || brew install ldid
 type ninja &>/dev/null || brew install ninja
 
 info "Checking out Swift repo"
-
 if [[ -d swift-source ]]; then
 	rm -rf swift-source
 fi
 
 mkdir swift-source
 cd swift-source
-git clone https://github.com/apple/swift.git
-swift/utils/update-checkout --clone --tag "swift-${version}-RELEASE"
+git clone --depth=1 https://github.com/apple/swift.git
+swift/utils/update-checkout --clone --tag "swift-${version}-RELEASE" -j "$(sysctl -n hw.ncpu)"
 
 # patch clang
-sed -i '' -e 's;__has_include(<CoreServices/CoreServices.h>);__has_include(<FSEvents/FSEvents.h>);g' clang/lib/DirectoryWatcher/DirectoryWatcher.cpp
+sed -i '' -e 's;__has_include(<CoreServices/CoreServices.h>);__has_include(<FSEvents/FSEvents.h>);g' llvm-project/clang/lib/DirectoryWatcher/mac/DirectoryWatcher-mac.cpp
+
+# for use with workflow
+if [[ ! -z $CI && -d $HOME/LLVMClangSwift_iphoneos ]]; then
+	info "Installing pre-compiled host toolchain"
+	mkdir -p build/ && mv -v $HOME/LLVMClangSwift_iphoneos build/
+fi
 
 # compile swift
 info "Compiling Swift"
-swift/utils/build-script \
---build-subdir=LLVMClangSwift_iphoneos \
---release \
--- \
---install-swift \
---install-destdir=output \
---swift-install-components="compiler;clang-builtin-headers;editor-integration;tools;sourcekit-xpc-service;swift-remote-mirror;swift-remote-mirror-headers;" \
---install-prefix=/usr \
---cross-compile-hosts=iphoneos-arm64 \
---compiler-vendor=apple \
---swift-primary-variant-sdk=IOS \
---swift-primary-variant-arch=arm64 \
---build-toolchain-only=1 \
---build-swift-static-stdlib=0 \
---build-swift-dynamic-stdlib=0 \
---build-swift-static-sdk-overlay=0 \
---build-swift-dynamic-sdk-overlay=0 \
---build-runtime-with-host-compiler=0 \
---skip-local-host-install \
---skip-build-benchmarks \
---skip-test-sourcekit \
---skip-test-swift \
---llvm-include-tests=0 \
---llvm-enable-modules=0 \
---build-swift-examples=0 \
---swift-include-tests=0 \
---darwin-deployment-version-ios=10.0 \
---darwin-crash-reporter-client=1 \
---reconfigure
+ARGS=(
+	--build-subdir=LLVMClangSwift_iphoneos \
+	--release \
+	-- \
+	--install-swift \
+	--install-destdir=output \
+	--swift-install-components="compiler;clang-builtin-headers;editor-integration;tools;sourcekit-xpc-service;swift-remote-mirror;swift-remote-mirror-headers;" \
+	--install-prefix=/usr \
+	--cmake-generator=Ninja \
+	--extra-cmake-options="-DLLVM_TARGETS_TO_BUILD=X86;ARM;AArch64" \
+	--cross-compile-hosts=iphoneos-arm64 \
+	--compiler-vendor=apple \
+	--swift-primary-variant-sdk=IOS \
+	--swift-primary-variant-arch=arm64 \
+	--build-args="-j$(sysctl -n hw.ncpu)" \
+	--build-toolchain-only=1 \
+	--build-swift-static-stdlib=0 \
+	--build-swift-dynamic-stdlib=0 \
+	--build-swift-static-sdk-overlay=0 \
+	--build-swift-dynamic-sdk-overlay=0 \
+	--build-runtime-with-host-compiler=0 \
+	--skip-local-host-install \
+	--skip-build-benchmarks \
+	--skip-build-clang-tools-extra \
+	--skip-build-android \
+	--skip-test-sourcekit \
+	--skip-test-swift \
+	--llvm-include-tests=0 \
+	--llvm-enable-modules=0 \
+	--skip-build-osx \
+	--skip-test-osx \
+	--skip-build-tvos \
+	--skip-test-tvos \
+	--skip-build-watchos \
+	--skip-test-watchos \
+	--build-swift-examples=0 \
+	--swift-include-tests=0 \
+	--darwin-deployment-version-ios=10.0 \
+	--darwin-crash-reporter-client=1 \
+)
+if ! [[ -z $CI ]]; then
+	ARGS+=(
+		--skip-local-build \
+	)
+fi
+swift/utils/build-script "${ARGS[@]}" --reconfigure
 cd ..
 
 info "Merging toolchains"
-cp -a "swift-source/output/merged-hosts/usr/bin" usr/
-cp "swift-source/output/merged-hosts/usr/lib/libswiftDemangle.dylib" usr/lib/
+if [[ -z $CI ]]; then
+	cp -av "swift-source/output/merged-hosts/usr/bin" usr/
+	cp -v "swift-source/output/merged-hosts/usr/lib/libswiftDemangle.dylib" usr/lib/
+else
+	cp -av "swift-source/output/usr/bin" usr/
+	cp -v "swift-source/output/usr/lib/libswiftDemangle.dylib" usr/lib/
+fi
 cd usr/
 # Codesign any Mach-O files, also adding the correct entitlements
 find . \( -type f \( -name '*.dylib' -or \( -path './bin/*' -not -name '*.py' \) \) -or \( -path '*.framework/*' -not -name '*.*' \) -not -name '.DS_Store' \) -print0 | xargs -0 -I{} sh -c "ldid -S../../ent.xml {} || :"
 
-function copy_file() {
-	mkdir -p share/swift_stash/"$(dirname "$1")"
-	mv "$1" share/swift_stash/"$(dirname "$1")"
-	ln -fs /usr/share/swift_stash/"$1" "$1"
+copy_file() {
+	# Remove "./" from the file path
+	file="$(echo $1 | cut -c 3-)"
+	mkdir -p share/swift_stash/"$(dirname "$file")"
+	mv -v "$file" share/swift_stash/"$(dirname "$file")"
+	ln -fs /usr/share/swift_stash/"$file" "$file"
 }
 
 export -f copy_file
